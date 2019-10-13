@@ -1,45 +1,92 @@
 from collections import namedtuple
-from typing import List, Set, Dict
+from typing import List, Set, Dict, Tuple
 
 import requests
-from bs4 import BeautifulSoup
 from lxml import etree
 from lxml.etree import XPath
+
 
 Emoji = namedtuple('Emoji', 'char name')
 
 
-def fetch_emoji_list() -> List[Emoji]:
-    return extract_from_html(fetch_emoji_html())
+def extract_name_from_line(line: str) -> Tuple[chr, str]:
+    fields = [s.strip() for s in line.split(';')]
+    char = chr(int(fields[0], 16))
+    name = fields[1]
+    return (char, name)
 
 
-def fetch_emoji_html() -> BeautifulSoup:
-    max_tries = 5
-    for i in range(max_tries):
-        print('Downloading emojis... try %s' % (i + 1))
-        data = requests.get(
-            'https://unicode.org/emoji/charts-12.0/full-emoji-list.html',
-            timeout=120
-        )  # type: requests.Response
-        if data:
-            break
+def fetch_character_names() -> Dict[chr, str]:
+    print('Downloading names...')
 
-    if not data:
-        print('Could not fetch emoji data. Try again later or use another URL.')
-        exit(10)
-    return BeautifulSoup(data.content, 'lxml')
+    data = requests.get(
+        'https://unicode.org/Public/UNIDATA/UnicodeData.txt',
+        timeout=60
+    )  # type: requests.Response
 
-
-def extract_from_html(html: BeautifulSoup) -> List[Emoji]:
-    emojis = []
-
-    for row in html.find('table').find_all('tr'):
-        if row.th:
+    names = dict()
+    for line in data.content.decode(data.encoding).split('\n'):
+        if line.startswith('#') or len(line) == 0:
             continue
-        emoji = row.find('td', {'class': 'chars'}).string
-        description = row.find('td', {'class': 'name'}).string.replace('⊛ ', '')
+        char, desc = extract_name_from_line(line)
+        names[char] = desc
 
-        emojis.append(Emoji(emoji, description))
+    return names
+
+
+CHARACTER_NAMES = fetch_character_names()
+
+
+def fetch_emoji_list() -> List[Emoji]:
+    return fetch_emojis() + fetch_math_symbols()
+
+
+def fetch_math_symbols() -> List[Emoji]:
+    print('Downloading list of maths symbols...')
+
+    data = requests.get(
+        'https://unicode.org/Public/math/latest/MathClassEx-15.txt',
+        timeout=60
+    )  # type: requests.Response
+
+    started = False
+    chars = []
+    for line in data.content.decode(data.encoding).split('\n'):
+        if line.startswith('#') or len(line) == 0:
+            continue
+        chars.extend(extract_emojis_from_line(line))
+
+    emojis = []
+    for char in chars:
+        try:
+            emojis.append(Emoji(char, CHARACTER_NAMES[char].lower()))
+        except KeyError:
+            pass
+
+    return emojis
+
+
+def fetch_emojis() -> List[Emoji]:
+    print('Downloading list of emojis...')
+
+    data = requests.get(
+        'https://unicode.org/Public/emoji/12.0/emoji-data.txt',
+        timeout=60
+    )  # type: requests.Response
+
+    started = False
+    chars = []
+    for line in data.content.decode(data.encoding).split('\n'):
+        if line.startswith('#') or len(line) == 0:
+            continue
+        chars.extend(extract_emojis_from_line(line))
+
+    emojis = []
+    for char in chars:
+        try:
+            emojis.append(Emoji(char, CHARACTER_NAMES[char].lower()))
+        except KeyError:
+            pass
 
     return emojis
 
