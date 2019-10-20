@@ -9,86 +9,79 @@ from lxml.etree import XPath
 Emoji = namedtuple('Emoji', 'char name')
 
 
-def extract_name_from_line(line: str) -> Tuple[chr, str]:
+def extract_character_description_from_line(line: str) -> Tuple[chr, str]:
     fields = [s.strip() for s in line.split(';')]
     char = chr(int(fields[0], 16))
     name = fields[1]
     return (char, name)
 
 
-def fetch_character_names() -> Dict[chr, str]:
-    print('Downloading names...')
+def fetch_character_descriptions() -> Dict[chr, str]:
+    print('Downloading character descriptions...')
 
     data = requests.get(
         'https://unicode.org/Public/UNIDATA/UnicodeData.txt',
         timeout=60
     )  # type: requests.Response
 
-    names = dict()
+    descriptions = dict()
     for line in data.content.decode(data.encoding).split('\n'):
         if line.startswith('#') or len(line) == 0:
             continue
-        char, desc = extract_name_from_line(line)
-        names[char] = desc
+        char, desc = extract_character_description_from_line(line)
+        descriptions[char] = desc
 
-    return names
+    return descriptions
 
 
-CHARACTER_NAMES = fetch_character_names()
+DESCRIPTIONS = fetch_character_descriptions()
 
 
 def fetch_emoji_list() -> List[Emoji]:
-    return fetch_emojis() + fetch_math_symbols()
+    chars = fetch_emojis() + fetch_math_symbols()
+    chars = list(set(chars)) # eliminate dupplicates
+    chars = sorted(chars)
+    emojis = []
+    for char in chars:
+        try:
+            emojis.append(Emoji(char, DESCRIPTIONS[char].lower()))
+        except KeyError:
+            pass
+    return emojis
 
 
-def fetch_math_symbols() -> List[Emoji]:
-    print('Downloading list of maths symbols...')
+def fetch_math_symbols() -> List[chr]:
+    print('Downloading raw maths symbols...')
 
     data = requests.get(
         'https://unicode.org/Public/math/latest/MathClassEx-15.txt',
         timeout=60
     )  # type: requests.Response
 
-    started = False
     chars = []
     for line in data.content.decode(data.encoding).split('\n'):
         if line.startswith('#') or len(line) == 0:
             continue
         chars.extend(extract_emojis_from_line(line))
 
-    emojis = []
-    for char in chars:
-        try:
-            emojis.append(Emoji(char, CHARACTER_NAMES[char].lower()))
-        except KeyError:
-            pass
-
-    return emojis
+    return chars
 
 
-def fetch_emojis() -> List[Emoji]:
-    print('Downloading list of emojis...')
+def fetch_emojis() -> List[chr]:
+    print('Downloading raw emojis...')
 
     data = requests.get(
         'https://unicode.org/Public/emoji/12.0/emoji-data.txt',
         timeout=60
     )  # type: requests.Response
 
-    started = False
     chars = []
     for line in data.content.decode(data.encoding).split('\n'):
         if line.startswith('#') or len(line) == 0:
             continue
         chars.extend(extract_emojis_from_line(line))
 
-    emojis = []
-    for char in chars:
-        try:
-            emojis.append(Emoji(char, CHARACTER_NAMES[char].lower()))
-        except KeyError:
-            pass
-
-    return emojis
+    return chars
 
 
 def fetch_human_emojis() -> List[chr]:
